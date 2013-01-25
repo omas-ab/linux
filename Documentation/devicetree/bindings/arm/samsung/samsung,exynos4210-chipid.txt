@@ -1,0 +1,15 @@
+* Samsung Exynos4/5 Chip-ID controller
+
+Samsung's Exynos4/5 architectures include a chipid controller which can be used
+to determine the product id and revision.
+
+Required properties:
+- compatible: should be "samsung,exynos4210-chipid".
+- reg: Base address and size of the chip-id controller registers.
+
+Example:
+
+	chipid@10000000 {
+		compatible = "samsung,exynos4210-chipid";
+		reg = <0x10000000 0x100>;
+	};
