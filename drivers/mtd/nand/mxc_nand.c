@@ -266,7 +266,8 @@ static struct nand_ecclayout nandv2_hw_eccoob_4k = {
 	}
 };
 
-static const char *part_probes[] = { "RedBoot", "cmdlinepart", "ofpart", NULL };
+static const char const *part_probes[] = {
+	"cmdlinepart", "RedBoot", "ofpart", NULL };
 
 static void memcpy32_fromio(void *trg, const void __iomem  *src, size_t size)
 {
@@ -1378,7 +1379,7 @@ static int __init mxcnd_probe_dt(struct mxc_nand_host *host)
 }
 #endif
 
-static int __devinit mxcnd_probe(struct platform_device *pdev)
+static int mxcnd_probe(struct platform_device *pdev)
 {
 	struct nand_chip *this;
 	struct mtd_info *mtd;
@@ -1436,9 +1437,9 @@ static int __devinit mxcnd_probe(struct platform_device *pdev)
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 		if (!res)
 			return -ENODEV;
-		host->regs_ip = devm_request_and_ioremap(&pdev->dev, res);
-		if (!host->regs_ip)
-			return -ENOMEM;
+		host->regs_ip = devm_ioremap_resource(&pdev->dev, res);
+		if (IS_ERR(host->regs_ip))
+			return PTR_ERR(host->regs_ip);
 
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	} else {
@@ -1448,9 +1449,9 @@ static int __devinit mxcnd_probe(struct platform_device *pdev)
 	if (!res)
 		return -ENODEV;
 
-	host->base = devm_request_and_ioremap(&pdev->dev, res);
-	if (!host->base)
-		return -ENOMEM;
+	host->base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(host->base))
+		return PTR_ERR(host->base);
 
 	host->main_area0 = host->base;
 
@@ -1556,12 +1557,13 @@ static int __devinit mxcnd_probe(struct platform_device *pdev)
 	return 0;
 
 escan:
-	clk_disable_unprepare(host->clk);
+	if (host->clk_act)
+		clk_disable_unprepare(host->clk);
 
 	return err;
 }
 
-static int __devexit mxcnd_remove(struct platform_device *pdev)
+static int mxcnd_remove(struct platform_device *pdev)
 {
 	struct mxc_nand_host *host = platform_get_drvdata(pdev);
 
@@ -1580,7 +1582,7 @@ static struct platform_driver mxcnd_driver = {
 	},
 	.id_table = mxcnd_devtype,
 	.probe = mxcnd_probe,
-	.remove = __devexit_p(mxcnd_remove),
+	.remove = mxcnd_remove,
 };
 module_platform_driver(mxcnd_driver);
 

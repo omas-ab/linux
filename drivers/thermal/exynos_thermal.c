@@ -832,7 +832,7 @@ static inline struct  exynos_tmu_platform_data *exynos_get_driver_data(
 	return (struct exynos_tmu_platform_data *)
 			platform_get_device_id(pdev)->driver_data;
 }
-static int __devinit exynos_tmu_probe(struct platform_device *pdev)
+static int exynos_tmu_probe(struct platform_device *pdev)
 {
 	struct exynos_tmu_data *data;
 	struct exynos_tmu_platform_data *pdata = pdev->dev.platform_data;
@@ -866,11 +866,9 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 		return -ENOENT;
 	}
 
-	data->base = devm_request_and_ioremap(&pdev->dev, data->mem);
-	if (!data->base) {
-		dev_err(&pdev->dev, "Failed to ioremap memory\n");
-		return -ENODEV;
-	}
+	data->base = devm_ioremap_resource(&pdev->dev, data->mem);
+	if (IS_ERR(data->base))
+		return PTR_ERR(data->base);
 
 	ret = devm_request_irq(&pdev->dev, data->irq, exynos_tmu_irq,
 		IRQF_TRIGGER_RISING, "exynos-tmu", data);
@@ -937,7 +935,7 @@ err_clk:
 	return ret;
 }
 
-static int __devexit exynos_tmu_remove(struct platform_device *pdev)
+static int exynos_tmu_remove(struct platform_device *pdev)
 {
 	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
 
@@ -985,7 +983,7 @@ static struct platform_driver exynos_tmu_driver = {
 		.of_match_table = exynos_tmu_match,
 	},
 	.probe = exynos_tmu_probe,
-	.remove	= __devexit_p(exynos_tmu_remove),
+	.remove	= exynos_tmu_remove,
 	.id_table = exynos_tmu_driver_ids,
 };
 

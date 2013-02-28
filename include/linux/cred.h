@@ -128,7 +128,6 @@ struct cred {
 	struct key	*process_keyring; /* keyring private to this process */
 	struct key	*thread_keyring; /* keyring private to this thread */
 	struct key	*request_key_auth; /* assumed request_key authority */
-	struct thread_group_cred *tgcred; /* thread-group shared credentials */
 #endif
 #ifdef CONFIG_SECURITY
 	void		*security;	/* subjective LSM security */
@@ -344,10 +343,8 @@ static inline void put_cred(const struct cred *_cred)
 extern struct user_namespace init_user_ns;
 #ifdef CONFIG_USER_NS
 #define current_user_ns()	(current_cred_xxx(user_ns))
-#define task_user_ns(task)	(task_cred_xxx((task), user_ns))
 #else
 #define current_user_ns()	(&init_user_ns)
-#define task_user_ns(task)	(&init_user_ns)
 #endif
 
 

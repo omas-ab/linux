@@ -93,6 +93,7 @@
 			reg = <0xd0400 0x20>;
 			ngpios = <32>;
 			interrupt-controller;
+			#interrupt-cells = <2>;
 			interrupts = <12>, <13>, <14>, <60>;
 		};
 
@@ -103,6 +104,7 @@
 			reg = <0xd0420 0x20>;
 			ngpios = <32>;
 			interrupt-controller;
+			#interrupt-cells = <2>;
 			interrupts = <61>;
 		};
 
@@ -117,6 +119,7 @@
 		pinctrl: pinctrl@d0200 {
 			compatible = "marvell,dove-pinctrl";
 			reg = <0xd0200 0x10>;
+			clocks = <&gate_clk 22>;
 		};
 
 		spi0: spi@10600 {

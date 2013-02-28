@@ -108,14 +108,6 @@ ext4_file_dio_write(struct kiocb *iocb, const struct iovec *iov,
 
 	/* Unaligned direct AIO must be serialized; see comment above */
 	if (unaligned_aio) {
-		static unsigned long unaligned_warn_time;
-
-		/* Warn about this once per day */
-		if (printk_timed_ratelimit(&unaligned_warn_time, 60*60*24*HZ))
-			ext4_msg(inode->i_sb, KERN_WARNING,
-				 "Unaligned AIO/DIO on inode %ld by %s; "
-				 "performance will be poor.",
-				 inode->i_ino, current->comm);
 		mutex_lock(ext4_aio_mutex(inode));
 		ext4_unwritten_wait(inode);
 	}
@@ -175,7 +167,7 @@ static ssize_t
 ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 		unsigned long nr_segs, loff_t pos)
 {
-	struct inode *inode = iocb->ki_filp->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(iocb->ki_filp);
 	ssize_t ret;
 
 	/*
@@ -248,7 +240,7 @@ static int ext4_file_open(struct inode * inode, struct file * filp)
 			handle_t *handle;
 			int err;
 
-			handle = ext4_journal_start_sb(sb, 1);
+			handle = ext4_journal_start_sb(sb, EXT4_HT_MISC, 1);
 			if (IS_ERR(handle))
 				return PTR_ERR(handle);
 			err = ext4_journal_get_write_access(handle, sbi->s_sbh);
@@ -303,7 +295,7 @@ static int ext4_file_open(struct inode * inode, struct file * filp)
  * page cache has data or not.
  */
 static int ext4_find_unwritten_pgoff(struct inode *inode,
-				     int origin,
+				     int whence,
 				     struct ext4_map_blocks *map,
 				     loff_t *offset)
 {
@@ -333,10 +325,10 @@ static int ext4_find_unwritten_pgoff(struct inode *inode,
 		nr_pages = pagevec_lookup(&pvec, inode->i_mapping, index,
 					  (pgoff_t)num);
 		if (nr_pages == 0) {
-			if (origin == SEEK_DATA)
+			if (whence == SEEK_DATA)
 				break;
 
-			BUG_ON(origin != SEEK_HOLE);
+			BUG_ON(whence != SEEK_HOLE);
 			/*
 			 * If this is the first time to go into the loop and
 			 * offset is not beyond the end offset, it will be a
@@ -352,7 +344,7 @@ static int ext4_find_unwritten_pgoff(struct inode *inode,
 		 * offset is smaller than the first page offset, it will be a
 		 * hole at this offset.
 		 */
-		if (lastoff == startoff && origin == SEEK_HOLE &&
+		if (lastoff == startoff && whence == SEEK_HOLE &&
 		    lastoff < page_offset(pvec.pages[0])) {
 			found = 1;
 			break;
@@ -366,7 +358,7 @@ static int ext4_find_unwritten_pgoff(struct inode *inode,
 			 * If the current offset is not beyond the end of given
 			 * range, it will be a hole.
 			 */
-			if (lastoff < endoff && origin == SEEK_HOLE &&
+			if (lastoff < endoff && whence == SEEK_HOLE &&
 			    page->index > end) {
 				found = 1;
 				*offset = lastoff;
@@ -391,10 +383,10 @@ static int ext4_find_unwritten_pgoff(struct inode *inode,
 				do {
 					if (buffer_uptodate(bh) ||
 					    buffer_unwritten(bh)) {
-						if (origin == SEEK_DATA)
+						if (whence == SEEK_DATA)
 							found = 1;
 					} else {
-						if (origin == SEEK_HOLE)
+						if (whence == SEEK_HOLE)
 							found = 1;
 					}
 					if (found) {
@@ -416,7 +408,7 @@ static int ext4_find_unwritten_pgoff(struct inode *inode,
 		 * The no. of pages is less than our desired, that would be a
 		 * hole in there.
 		 */
-		if (nr_pages < num && origin == SEEK_HOLE) {
+		if (nr_pages < num && whence == SEEK_HOLE) {
 			found = 1;
 			*offset = lastoff;
 			break;
@@ -472,10 +464,8 @@ static loff_t ext4_seek_data(struct file *file, loff_t offset, loff_t maxsize)
 		 * If there is a delay extent at this offset,
 		 * it will be as a data.
 		 */
-		es.start = last;
-		(void)ext4_es_find_extent(inode, &es);
-		if (last >= es.start &&
-		    last < es.start + es.len) {
+		ext4_es_find_delayed_extent(inode, last, &es);
+		if (es.es_len != 0 && in_range(last, es.es_lblk, es.es_len)) {
 			if (last != start)
 				dataoff = last << blkbits;
 			break;
@@ -557,11 +547,9 @@ static loff_t ext4_seek_hole(struct file *file, loff_t offset, loff_t maxsize)
 		 * If there is a delay extent at this offset,
 		 * we will skip this extent.
 		 */
-		es.start = last;
-		(void)ext4_es_find_extent(inode, &es);
-		if (last >= es.start &&
-		    last < es.start + es.len) {
-			last = es.start + es.len;
+		ext4_es_find_delayed_extent(inode, last, &es);
+		if (es.es_len != 0 && in_range(last, es.es_lblk, es.es_len)) {
+			last = es.es_lblk + es.es_len;
 			holeoff = last << blkbits;
 			continue;
 		}
@@ -609,7 +597,7 @@ static loff_t ext4_seek_hole(struct file *file, loff_t offset, loff_t maxsize)
  * by calling generic_file_llseek_size() with the appropriate maxbytes
  * value for each.
  */
-loff_t ext4_llseek(struct file *file, loff_t offset, int origin)
+loff_t ext4_llseek(struct file *file, loff_t offset, int whence)
 {
 	struct inode *inode = file->f_mapping->host;
 	loff_t maxbytes;
@@ -619,11 +607,11 @@ loff_t ext4_llseek(struct file *file, loff_t offset, int origin)
 	else
 		maxbytes = inode->i_sb->s_maxbytes;
 
-	switch (origin) {
+	switch (whence) {
 	case SEEK_SET:
 	case SEEK_CUR:
 	case SEEK_END:
-		return generic_file_llseek_size(file, offset, origin,
+		return generic_file_llseek_size(file, offset, whence,
 						maxbytes, i_size_read(inode));
 	case SEEK_DATA:
 		return ext4_seek_data(file, offset, maxbytes);

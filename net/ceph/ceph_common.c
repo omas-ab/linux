@@ -15,6 +15,8 @@
 #include <linux/slab.h>
 #include <linux/statfs.h>
 #include <linux/string.h>
+#include <linux/nsproxy.h>
+#include <net/net_namespace.h>
 
 
 #include <linux/ceph/ceph_features.h>
@@ -292,6 +294,9 @@ ceph_parse_options(char *options, const char *dev_name,
 	int err = -ENOMEM;
 	substring_t argstr[MAX_OPT_ARGS];
 
+	if (current->nsproxy->net_ns != &init_net)
+		return ERR_PTR(-EINVAL);
+
 	opt = kzalloc(sizeof(*opt), GFP_KERNEL);
 	if (!opt)
 		return ERR_PTR(-ENOMEM);
@@ -305,7 +310,6 @@ ceph_parse_options(char *options, const char *dev_name,
 
 	/* start with defaults */
 	opt->flags = CEPH_OPT_DEFAULT;
-	opt->osd_timeout = CEPH_OSD_TIMEOUT_DEFAULT;
 	opt->osd_keepalive_timeout = CEPH_OSD_KEEPALIVE_DEFAULT;
 	opt->mount_timeout = CEPH_MOUNT_TIMEOUT_DEFAULT; /* seconds */
 	opt->osd_idle_ttl = CEPH_OSD_IDLE_TTL_DEFAULT;   /* seconds */
@@ -391,7 +395,7 @@ ceph_parse_options(char *options, const char *dev_name,
 
 			/* misc */
 		case Opt_osdtimeout:
-			opt->osd_timeout = intval;
+			pr_warning("ignoring deprecated osdtimeout option\n");
 			break;
 		case Opt_osdkeepalivetimeout:
 			opt->osd_keepalive_timeout = intval;
